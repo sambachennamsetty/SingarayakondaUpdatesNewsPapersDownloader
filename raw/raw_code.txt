@@ -1,0 +1,421 @@
+import time
+from datetime import date
+from urllib.parse import urlparse, parse_qs
+
+import requests
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from DropboxManager import DropboxManager
+from PDFGenerator import PDFGenerator
+from PdfUtils import merge_pdfs
+from constants import PRAJASAKTI, VISALANDRA, VAARTHA, ANDHARAJOTHI, SAKSHI, EENADU
+
+# pyhtml2pdf
+# PyPDF2
+
+today_date = date.today()
+# today_date = today_date + timedelta(days=1)
+today_date_str = today_date.strftime("%Y-%m-%d")
+
+print_ops = {"pageRanges": "1-1", "displayHeaderFooter": False, "headerTemplate": "<span class=url></span>"}
+
+drop_box_manager = DropboxManager()
+drop_box_manager.create_folder()
+
+pdf_generator = PDFGenerator()
+driver = pdf_generator.get_driver()
+
+
+def accept_cookies(cookie, driver):
+    try:
+        accept_cookies_button = driver.find_element(By.ID, cookie)
+        accept_cookies_button.click()
+    except Exception as e:
+        print(f"Could not find or click 'Accept Cookies' button: {e}")
+
+
+def skip_ads(driver):
+    try:
+        button = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.XPATH, "//button[text()='SKIP']"))
+        )
+        button.click()
+    except TimeoutException:
+        print("Button 'SKIP' not found within the specified time")
+
+
+def load_page(driver, url):
+    driver.get(url)
+    WebDriverWait(driver, 10).until(EC.url_contains('pgid'))  # Wait until the current URL contains 'pgid'
+
+
+def download_prajasakti_paper(driver, url, paper_title):
+    try:
+        print(f"Reading {PRAJASAKTI} {paper_title} paper.")
+        praja_sakti_files = []
+        for page_no in range(1, 9):
+            page_name = f"{today_date_str}/{PRAJASAKTI}_{paper_title.capitalize()}_{page_no}.pdf"
+            praja_sakti_files.append(page_name)
+            pdf_generator.get_pdf_from_html(driver, url.format(today_date_str, page_no), page_name, None,
+                                            print_options=print_ops)
+        merge_pdfs(praja_sakti_files, f"{today_date_str}/PrajaSakti{paper_title.capitalize()}.pdf")
+        print(f"{PRAJASAKTI} {paper_title} pdf has been generated.")
+    except Exception as err:
+        print(f"Exception in {PRAJASAKTI} {paper_title} paper: {err}")
+
+
+def prajasakthi(driver):
+    main_paper_url = "https://epaper.prajasakti.com/view/?date={}&edition=39&pg_no={}"
+    district_paper_url = "https://epaper.prajasakti.com/view/?date={}&pg_no={}&edition=21"
+
+    download_prajasakti_paper(driver, main_paper_url, 'main')
+    download_prajasakti_paper(driver, district_paper_url, 'district')
+
+
+def visalandra(driver):
+    try:
+        visalandra_date = today_date.strftime("%d/%m/%Y")
+        page_nos = get_visalandra_page_nums(driver, visalandra_date)
+
+        if page_nos:
+            print(f"Reading {VISALANDRA} paper.")
+            visalandra_files = generate_visalandra_pdf_files(driver, visalandra_date, page_nos)
+            merge_pdfs(visalandra_files, f"{today_date_str}/{VISALANDRA}.pdf")
+            print(f"{VISALANDRA} pdf has been generated.")
+        else:
+            print(f"No page numbers found for {VISALANDRA} paper.")
+
+    except Exception as err:
+        print(f"Exception in {VISALANDRA} paper: {err}")
+
+
+# Function to generate visalandra PDF files
+def generate_visalandra_pdf_files(driver, visalandra_date, page_nos):
+    visalandra_files = []
+    for page_no in page_nos:
+        url = f'https://epaper.visalaandhra.com/Home/FullPage?eid=13&edate={visalandra_date}&pgid={str(page_no)}'
+        page_name = f"{today_date_str}/{VISALANDRA}_" + str(page_no) + ".pdf"
+        visalandra_files.append(page_name)
+        pdf_generator.get_pdf_from_html(driver, url, page_name, print_options=print_ops)
+    return visalandra_files
+
+
+def get_visalandra_page_nums(driver, visalandra_date):
+    url = f'https://epaper.visalaandhra.com/Home/FullPage?eid=13&edate={visalandra_date}'
+    load_page(driver, url)
+    current_url = driver.current_url
+
+    parsed_url = urlparse(current_url)
+    query_params = parse_qs(parsed_url.query)
+
+    page_nos = query_params.get('pgid')
+
+    if page_nos:
+        accept_cookies("gdprContinue", driver)
+        page_nos = [int(num) for num in page_nos]
+        return page_nos + [page_nos[0] + 1]
+    else:
+        return []
+
+
+def download_surya_pdf_files(driver, url, filename, xpath_expression):
+    driver.get(url)
+
+    try:
+        if xpath_expression:
+            new_elements = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, xpath_expression)))
+            new_elements.click()
+
+            element = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "btn-pdfdownload")))
+            href_value = element.get_attribute("href")
+            response = requests.get(href_value)
+
+            if response.status_code == 200:
+                with open(filename, 'wb') as f:
+                    f.write(response.content)
+                print(f"{filename} downloaded successfully.")
+            else:
+                print(f"Failed to download {filename}.")
+        else:
+            print("Invalid XPath expression.")
+
+    except Exception as err:
+        print(f"Exception while downloading {filename}: {err}")
+
+
+def surya(driver):
+    main_paper_url = f'https://www.suryaepaper.com/category/8/andhra-pradesh'
+    district_paper_url = f'https://www.suryaepaper.com/category/18/prakasam'
+
+    main_paper_name = f"{today_date_str}/SuryaMain.pdf"
+    district_paper_name = f"{today_date_str}/SuryaDistrict.pdf"
+
+    main_paper_xpath_expression = "//a[@data-linktype='edition-link' and @data-cat_ids='8']"
+    district_paper_xpath_expression = "//a[@data-linktype='edition-link' and @data-cat_ids='18']"
+
+    download_surya_pdf_files(driver, main_paper_url, main_paper_name, main_paper_xpath_expression)
+    download_surya_pdf_files(driver, district_paper_url, district_paper_name, district_paper_xpath_expression)
+
+
+def navigate_to_next_page(driver, next_url):
+    next_page = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, 'Next_Page')))
+    next_page.click()
+    WebDriverWait(driver, 10).until(lambda driver: driver.current_url != next_url)
+
+
+def navigate_to_next_eenadu_page(driver):
+    next_page = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, "//span[@data-original-title='Next Page']")))
+    next_page.click()
+    # WebDriverWait(driver, 15).until(lambda driver: driver.current_url != next_url)
+
+
+def get_vaartha_page_numbers(driver, vaartha_date):
+    url = f'https://epaper.vaartha.com/Home/FullPage?eid=36&edate={vaartha_date}'
+    load_page(driver, url)
+    current_url = driver.current_url
+
+    parsed_url = urlparse(current_url)
+    query_params = parse_qs(parsed_url.query)
+
+    page_nos = query_params.get('pgid')
+    return [int(num) for num in page_nos] if page_nos else []
+
+
+def vaartha(driver):
+    try:
+        vaartha_date = today_date.strftime("%d/%m/%Y")
+        page_nos = get_vaartha_page_numbers(driver, vaartha_date)
+
+        vaartha_files = []
+        print(f"Reading {VAARTHA} paper.")
+        for page_no in range(12):
+            for pg_no in page_nos:
+                page_no = pg_no + page_no
+                url = f'https://epaper.vaartha.com/Home/FullPage?eid=36&edate={vaartha_date}&pgid={str(page_no)}'
+                page_name = f"{today_date_str}/{VAARTHA}_" + str(page_no) + ".pdf"
+                vaartha_files.append(page_name)
+                pdf_generator.get_pdf_from_html(driver, url, page_name, print_options=print_ops)
+        merge_pdfs(vaartha_files, f"{today_date_str}/{VAARTHA}.pdf")
+        print(f"{VAARTHA} pdf has been generated.")
+    except Exception as err:
+        print(f"Exception in {VAARTHA} paper: {err}")
+
+
+def andhra_jyothi(driver):
+    try:
+        abn_date = today_date.strftime("%d/%m/%Y")
+        url = f'https://epaper.andhrajyothy.com/Prakasham_District?eid=18&edate={abn_date}'
+        load_page(driver, url)
+        current_url = driver.current_url
+
+        accept_cookies("gdprContinue", driver)
+
+        page_no = 1
+        abn_files = []
+
+        print(f"Reading {ANDHARAJOTHI} paper.")
+        while page_no <= 7:
+            page_name = f"{today_date_str}/{ANDHARAJOTHI}_" + str(page_no) + ".pdf"
+            pdf_generator.get_pdf_from_html(driver, current_url, page_name, print_options=print_ops)
+            abn_files.append(page_name)
+
+            navigate_to_next_page(driver, current_url)
+            current_url = driver.current_url
+
+            page_no += 1
+            time.sleep(2)  # Adding a short delay to avoid overwhelming the page with rapid navigation
+
+        merge_pdfs(abn_files, f"{today_date_str}/{ANDHARAJOTHI}.pdf")
+        print(f"{ANDHARAJOTHI} pdf has been generated.")
+
+    except Exception as err:
+        print(f"Exception in {ANDHARAJOTHI} paper: {err}")
+
+
+def sakshi(driver):
+    try:
+        sakshi_date = today_date.strftime("%d/%m/%Y")
+        url = f'https://epaper.sakshi.com/Prakasam_Dst?eid=72&edate={sakshi_date}'
+        load_page(driver, url)
+        current_url = driver.current_url
+
+        accept_cookies("gdprContinue", driver)
+        skip_ads(driver)
+
+        page_no = 1
+        sakshi_files = []
+
+        print(f"Reading {SAKSHI} paper.")
+        while page_no <= 6:
+            page_name = f"{today_date_str}/{SAKSHI}_" + str(page_no) + ".pdf"
+            pdf_generator.get_pdf_from_html(driver, current_url, page_name, print_options=print_ops)
+            sakshi_files.append(page_name)
+
+            navigate_to_next_page(driver, current_url)
+            current_url = driver.current_url
+
+            page_no += 1
+            time.sleep(2)  # Adding a short delay to avoid overwhelming the page with rapid navigation
+
+        merge_pdfs(sakshi_files, f"{today_date_str}/{SAKSHI}.pdf")
+        print(f"{SAKSHI} pdf has been generated.")
+
+    except Exception as err:
+        print(f"Exception in {SAKSHI} paper: {err}")
+
+
+def eenadu(driver):
+    try:
+        eenadu_date = today_date.strftime("%d/%m/%Y")
+        url = f'https://epaper.eenadu.net/Home/Index?date={eenadu_date}&eid=18'
+        driver.get(url)
+        current_url = driver.current_url
+
+        page_no = 1
+        sakshi_files = []
+
+        print(f"Reading {EENADU} paper.")
+        while page_no <= 5:
+            page_name = f"{today_date_str}/{EENADU}_" + str(page_no) + ".pdf"
+            pdf_generator.get_pdf_from_html(driver, current_url, page_name, print_options=print_ops)
+            sakshi_files.append(page_name)
+
+            navigate_to_next_eenadu_page(driver)
+            current_url = driver.current_url
+
+            page_no += 1
+            time.sleep(2)  # Adding a short delay to avoid overwhelming the page with rapid navigation
+
+        merge_pdfs(sakshi_files, f"{today_date_str}/{EENADU}.pdf")
+        print(f"{EENADU} pdf has been generated.")
+    except Exception as err:
+        print(f"Exception in {EENADU} paper: {err}")
+
+
+
+    def vaartha(self):
+    try:
+        vaartha_date = self.today_date.strftime("%d/%m/%Y")
+        page_nos = get_vaartha_page_numbers(self.driver, vaartha_date)
+
+        vaartha_files = []
+        print(f"Reading {VAARTHA} paper.")
+        for page_no in range(12):
+            for pg_no in page_nos:
+                page_no = pg_no + page_no
+                url = f'https://epaper.vaartha.com/Home/FullPage?eid=36&edate={vaartha_date}&pgid={str(page_no)}'
+                page_name = self.prepare_file_name(VAARTHA, str(page_no))
+                vaartha_files.append(page_name)
+                self.pdf_generator.get_pdf_from_html(url, page_name)
+        self.merge_files(vaartha_files, VAARTHA)
+        print(f"{VAARTHA} pdf has been generated.")
+        self.dropbox_manager.upload_files(self.today_date_str)
+    except Exception as err:
+        print(f"Exception in {VAARTHA} paper: {err}")
+
+
+prajasakthi(driver)
+visalandra(driver)
+surya(driver)
+vaartha(driver)
+sakshi(driver)
+eenadu(driver)
+andhra_jyothi(driver)
+drop_box_manager.upload_files(today_date_str, today_date_str)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import base64
+import json
+
+from selenium import webdriver
+from selenium.common import TimeoutException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.expected_conditions import staleness_of
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+
+
+def get_pdf_from_html(
+        driver: webdriver, path: str, target: str, print_options: dict = None
+):
+    driver.get(path)
+    try:
+        WebDriverWait(driver, 2).until(
+            staleness_of(driver.find_element(by=By.TAG_NAME, value="html"))
+        )
+    except TimeoutException:
+        calculated_print_options = {
+            "landscape": False,
+            "displayHeaderFooter": False,
+            "printBackground": True,
+            "preferCSSPageSize": True,
+        }
+        calculated_print_options.update(print_options)
+        result = send_devtools(
+            driver, "Page.printToPDF", calculated_print_options)
+        result_data = base64.b64decode(result["data"])
+        write_to_a_file(result_data, target)
+
+
+def send_devtools(driver, cmd, params=None):
+    resource = "/session/%s/chromium/send_command_and_get_result" % driver.session_id
+    url = driver.command_executor._url + resource
+    body = json.dumps({"cmd": cmd, "params": params})
+    response = driver.command_executor._request("POST", url, body)
+
+    if not response:
+        raise Exception(response.get("value"))
+
+    return response.get("value")
+
+
+def write_to_a_file(result_data, target):
+    """
+    Writes the data to the pdf file.
+
+    :param result_data: result data
+    :param target: target pdf file path.
+    """
+    with open(target, "wb") as file:
+        file.write(result_data)
+
+
+def get_chrome_driver():
+    """
+    Initiates the Chrome Driver.
+    :return: returns driver object.
+    """
+    webdriver_options = Options()
+    webdriver_prefs = {}
+    webdriver_options.add_argument("--headless")
+    webdriver_options.add_argument("--disable-gpu")
+    webdriver_options.add_argument("--no-sandbox")
+    webdriver_options.add_argument("--disable-dev-shm-usage")
+    webdriver_options.experimental_options["prefs"] = webdriver_prefs
+    webdriver_prefs["profile.default_content_settings"] = {"images": 2}
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=webdriver_options)
+
+    return driver
