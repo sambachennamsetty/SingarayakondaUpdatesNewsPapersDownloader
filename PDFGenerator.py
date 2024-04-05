@@ -9,25 +9,21 @@ import json
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.expected_conditions import staleness_of
 from selenium.webdriver.support.wait import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 
-def get_chrome_driver():
-    webdriver_options = Options()
-    webdriver_prefs = {}
-    webdriver_options.add_argument("--headless")
-    webdriver_options.add_argument("--disable-gpu")
-    webdriver_options.add_argument("--no-sandbox")
-    webdriver_options.add_argument("--disable-dev-shm-usage")
-    webdriver_options.experimental_options["prefs"] = webdriver_prefs
-    webdriver_prefs["profile.default_content_settings"] = {"images": 2}
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=webdriver_options)
+def get_edge_driver():
+    options = webdriver.EdgeOptions()
+    options.use_chromium = True
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--ignore-certificate-errors")
+    driver = webdriver.Edge(options=options)
     return driver
 
 
@@ -38,7 +34,7 @@ def write_to_a_file(result_data, target):
 
 class PDFGenerator:
     def __init__(self):
-        self.driver = get_chrome_driver()
+        self.driver = get_edge_driver()
         self.print_ops = {
             "pageRanges": "1-1",
         }
