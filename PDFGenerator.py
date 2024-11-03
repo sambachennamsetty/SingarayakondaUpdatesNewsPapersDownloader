@@ -12,18 +12,18 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.expected_conditions import staleness_of
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 
-def get_edge_driver():
-    options = webdriver.EdgeOptions()
-    options.use_chromium = True
+def get_chrome_driver():
+    options = Options()
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--ignore-certificate-errors")
-    driver = webdriver.Edge(options=options)
+    driver = webdriver.Chrome(options=options)
+    driver.maximize_window()  # Maximize the Chrome browser window
     return driver
 
 
@@ -34,7 +34,7 @@ def write_to_a_file(result_data, target):
 
 class PDFGenerator:
     def __init__(self):
-        self.driver = get_edge_driver()
+        self.driver = get_chrome_driver()
         self.print_ops = {
             "pageRanges": "1-1",
         }

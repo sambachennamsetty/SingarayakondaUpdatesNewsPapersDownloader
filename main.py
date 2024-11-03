@@ -10,12 +10,9 @@ from datetime import date, timedelta
 
 import requests
 from selenium.common import TimeoutException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.expected_conditions import staleness_of
-from selenium.webdriver.support.wait import WebDriverWait
 
-from Constants import PRAJASAKTI_MAIN, PRAJASAKTI_DT, VISALANDRA, VAARTHA, ANDHARAJOTHI, SAKSHI, EENADU
+from Constants import PRAJASAKTI_MAIN, PRAJASAKTI_DT, VISALANDRA, VAARTHA, ANDHARAJOTHI, SAKSHI, EENADU, ANDHRA_PRABHA
 from DropboxManager import DropboxManager, remove_folder
 from PDFGenerator import PDFGenerator, write_to_a_file
 from PdfUtils import merge_pdfs
@@ -28,6 +25,45 @@ def accept_cookies(cookie, driver):
     except Exception as e:
         print(f"Could not find or click 'Accept Cookies' button: {e}")
 
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+def find_and_click_buttons(driver):
+    try:
+        # Wait for both buttons with id 'button-1' to be present
+        buttons = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.ID, "button-1"))
+        )
+
+        # Loop through found buttons and click based on text content
+        for button in buttons:
+            text = button.text
+            if text == "X":
+                print("Clicking button with capital 'X'")
+                button.click()
+            elif text == "x":
+                print("Clicking button with small 'x'")
+                button.click()
+            else:
+                print("Button with unexpected text:", text)
+
+    except Exception as e:
+        print(f"Could not find or click buttons: {e}")
+
+def hide_social_share_button(driver):
+    try:
+        # Wait for the social share button to be present
+        social_share_button = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "social_share_box_Container"))
+        )
+
+        # Use JavaScript to hide the element
+        driver.execute_script("arguments[0].style.display = 'none';", social_share_button)
+        #print("Social share button hidden.")
+    except Exception as e:
+        print(f"Could not find or hide social share button: {e}")
 
 def load_page(driver, url):
     driver.get(url)
@@ -47,6 +83,7 @@ def navigate_to_next_page(driver, next_url):
     try:
         next_page = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.ID, 'Next_Page')))
         next_page.click()
+        hide_social_share_button(driver)
         WebDriverWait(driver, 5).until(lambda driver: driver.current_url != next_url)
     except Exception as err:
         print(f"Couldn't find the next page..! Error: {err}")
@@ -133,9 +170,17 @@ class NewspaperDownloader:
             }
             print_options = print_options if print_options is not None else self.print_ops
             calculated_print_options.update(print_options)
-            result = self.send_devtools("Page.printToPDF", calculated_print_options)
-            result_data = base64.b64decode(result["data"])
-            write_to_a_file(result_data, target)
+
+            try:
+                result = self.send_devtools("Page.printToPDF", calculated_print_options)
+
+                if "data" not in result:
+                    raise ValueError("Expected 'data' key in result, but it was not found.")
+
+                result_data = base64.b64decode(result["data"])
+                write_to_a_file(result_data, target)
+            except Exception as e:
+                print(f"Error in PDF generation: {e}")
 
     def prepare_file_name(self, paper_name, page_no):
         return f"{self.today_date_str}/{paper_name}_{page_no}.pdf"
@@ -187,19 +232,21 @@ class NewspaperDownloader:
             abn_date = self.today_date.strftime("%d/%m/%Y")
 
             # Get the URLS from config file by section and key
-            url = self.config['newspapers']['abn_paper_url']
+            url = self.config.get('newspapers', 'abn_paper_url')
             url = url.format(abn_date)
 
             load_page(self.driver, url)
             current_url = self.driver.current_url
 
             accept_cookies("gdprContinue", self.driver)
+            hide_social_share_button(self.driver)
 
             page_no = 1
             abn_files = []
 
             print(f"Reading {ANDHARAJOTHI} paper.")
             self.driver.get(current_url)
+            hide_social_share_button(self.driver)
             while page_no <= 7:
                 page_name = self.prepare_file_name(ANDHARAJOTHI, str(page_no))
                 self.get_pdf_from_html(page_name)
@@ -226,13 +273,16 @@ class NewspaperDownloader:
 
             # Get the URLS from config file by section and key
             url = self.config['newspapers']['sakshi_paper_url']
+            print(self.config)
             url = url.format(sakshi_date)
 
             load_page(self.driver, url)
             current_url = self.driver.current_url
 
+            find_and_click_buttons(self.driver)
             accept_cookies("gdprContinue", self.driver)
             skip_ads(self.driver)
+            hide_social_share_button(self.driver)
 
             page_no = 1
             sakshi_files = []
@@ -271,21 +321,21 @@ class NewspaperDownloader:
             current_url = self.driver.current_url
 
             page_no = 1
-            sakshi_files = []
+            eenadu_files = []
 
             print(f"Reading {EENADU} paper.")
             self.driver.get(current_url)
             while page_no <= 6:
                 page_name = self.prepare_file_name(EENADU, str(page_no))
                 self.get_pdf_from_html(page_name)
-                sakshi_files.append(page_name)
+                eenadu_files.append(page_name)
 
                 if page_no != 6:
                     navigate_to_next_eenadu_page(self.driver)
                 page_no += 1
                 time.sleep(3)  # Adding a short delay to avoid overwhelming the page with rapid navigation
 
-            self.merge_files(sakshi_files, EENADU)
+            self.merge_files(eenadu_files, EENADU)
             print(f"{EENADU} pdf has been generated.")
             self.dropbox_manager.upload_files(self.today_date_str)
         except Exception as err:
@@ -293,37 +343,33 @@ class NewspaperDownloader:
 
     def vaartha(self):
         try:
-            vaartha_date = self.today_date.strftime("%d/%m/%Y")
+            vaartha_paper_name = f"{self.today_date_str}/Vaartha.pdf"
 
             # Get the URLS from config file by section and key
-            url = self.config['newspapers']['vaartha_paper_url']
-            url = url.format(vaartha_date)
+            # url = self.config['newspapers']['vaartha_paper_url']
+            # url = "https://epaper.vaartha.com/epaper/default/open?id=20"
+            url = "https://epaper.vaartha.com/"
 
             self.driver.get(url)
-            current_url = self.driver.current_url
-
-            page_no = 1
-            vaartha_files = []
-
-            print(f"Reading {VAARTHA} paper.")
-            self.driver.get(current_url)
-            while page_no <= 12:
-                page_name = self.prepare_file_name(VAARTHA, str(page_no))
-                self.get_pdf_from_html(page_name)
-                vaartha_files.append(page_name)
-
-                if page_no != 12:
-                    navigate_to_next_page(self.driver, current_url)
-                    current_url = self.driver.current_url
-
-                page_no += 1
-                time.sleep(2)  # Adding a short delay to avoid overwhelming the page with rapid navigation
-
-            self.merge_files(vaartha_files, VAARTHA)
-            print(f"{VAARTHA} pdf has been generated.")
+            # Locate the link by its text
+            element = self.driver.find_element(By.LINK_TEXT, "Ongole main")
+            # Get the href attribute value
+            href_value = element.get_attribute("href")
+            self.driver.get(href_value)
+            element = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "btn-pdfdownload")))
+            pdf_href_value = element.get_attribute("href")
+            response = requests.get(pdf_href_value)
+            if response.status_code == 200:
+                with open(vaartha_paper_name, 'wb') as f:
+                    f.write(response.content)
+                print(f"{vaartha_paper_name} downloaded successfully.")
+            else:
+                print(f"Failed to download {vaartha_paper_name}.")
             self.dropbox_manager.upload_files(self.today_date_str)
         except Exception as err:
             print(f"Exception in {VAARTHA} paper: {err}")
+
 
     def visalandra(self):
         try:
@@ -336,6 +382,7 @@ class NewspaperDownloader:
             self.driver.get(url)
             current_url = self.driver.current_url
             accept_cookies("gdprContinue", self.driver)
+            hide_social_share_button(self.driver)
 
             page_no = 1
             visalandra_files = []
@@ -358,15 +405,55 @@ class NewspaperDownloader:
         except Exception as err:
             print(f"Exception in {VISALANDRA} paper: {err}")
 
+    def andhra_prabha(self):
+        try:
+            andhra_prabha_date = self.today_date.strftime("%d/%m/%Y")
+
+            # Get the URLS from config file by section and key
+            url = self.config['newspapers']['andhra_prabha_paper_url']
+            url = url.format(andhra_prabha_date)
+
+            load_page(self.driver, url)
+            current_url = self.driver.current_url
+
+            accept_cookies("gdprContinue", self.driver)
+            hide_social_share_button(self.driver)
+
+            page_no = 1
+            andhra_prabha_files = []
+
+            print(f"Reading {ANDHRA_PRABHA} paper.")
+            self.driver.get(current_url)
+            while page_no <= 12:
+                page_name = self.prepare_file_name(ANDHRA_PRABHA, str(page_no))
+                self.get_pdf_from_html(page_name)
+                # self.pdf_generator.get_pdf_from_html(current_url, page_name)
+                andhra_prabha_files.append(page_name)
+
+                if page_no != 12:
+                    navigate_to_next_page(self.driver, current_url)
+                    current_url = self.driver.current_url
+
+                page_no += 1
+                time.sleep(3)  # Adding a short delay to avoid overwhelming the page with rapid navigation
+
+            self.merge_files(andhra_prabha_files, ANDHRA_PRABHA)
+            print(f"{ANDHRA_PRABHA} pdf has been generated.")
+            self.dropbox_manager.upload_files(self.today_date_str)
+
+        except Exception as err:
+            print(f"Exception in {ANDHRA_PRABHA} paper: {err}")
+
     def execute_download(self):
-        self.prajasakthi()
-        self.surya()
-        self.visalandra()
-        self.vaartha()
-        self.eenadu()
-        self.sakshi()
-        # time.sleep(600)
+        # self.prajasakthi()
+        # self.andhra_prabha()
+        # self.surya()
+        # self.visalandra()
+        # self.vaartha()
+        # self.eenadu()
+        # self.sakshi()
         self.andhra_jyothi()
+        # time.sleep(600)
         remove_folder()
 
 

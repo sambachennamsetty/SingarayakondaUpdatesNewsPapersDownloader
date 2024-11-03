@@ -1,7 +1,7 @@
 import dropbox
 
-APP_KEY = "aekujednsg7hmjy"
-APP_SECRET = "b6jve65qmhgrqau"
+APP_KEY = ""
+APP_SECRET = ""
 
 # Create an OAuth2 flow with offline access
 flow = dropbox.DropboxOAuth2FlowNoRedirect(APP_KEY, APP_SECRET, token_access_type='offline')
