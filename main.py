@@ -29,6 +29,36 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+def add_right_zero_to_elements(driver):
+    try:
+        # Locate and modify the "Next_Page" element
+        next_page_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "Next_Page"))
+        )
+        driver.execute_script("arguments[0].style.right = '0px';", next_page_element)
+
+        # Locate and modify the "Prev_Page" element
+        prev_page_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "Prev_Page"))
+        )
+        driver.execute_script("arguments[0].style.left = '0px';", prev_page_element)
+
+    except Exception as e:
+        print(f"Error modifying style: {e}")
+
+
+def add_right_zero(driver):
+    try:
+        # Wait for the element with id 'Next_Page' to be present
+        next_page_element = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "Next_Page"))
+        )
+
+        # Execute JavaScript to add 'right: 0px' style
+        driver.execute_script("arguments[0].style.right = '0px';", next_page_element)
+
+    except Exception as e:
+        print(f"Error modifying style: {e}")
 
 def find_and_click_buttons(driver):
     try:
@@ -41,13 +71,9 @@ def find_and_click_buttons(driver):
         for button in buttons:
             text = button.text
             if text == "X":
-                print("Clicking button with capital 'X'")
                 button.click()
             elif text == "x":
-                print("Clicking button with small 'x'")
                 button.click()
-            else:
-                print("Button with unexpected text:", text)
 
     except Exception as e:
         print(f"Could not find or click buttons: {e}")
@@ -77,6 +103,22 @@ def navigate_to_next_eenadu_page(driver):
         next_page.click()
     except Exception as err:
         print(f"Couldn't find the next page..! Error: {err}")
+
+
+def get_number_of_pages(driver):
+    try:
+        # Locate the select element by its ID
+        select_element = driver.find_element(By.ID, "myPageList")
+
+        # Get all options within the select element
+        options = select_element.find_elements(By.TAG_NAME, "option")
+
+        # Count the number of options
+        num_options = len(options)
+
+        return num_options
+    except Exception as e:
+        print(f"Error finding options: {e}")
 
 
 def navigate_to_next_page(driver, next_url):
@@ -247,6 +289,7 @@ class NewspaperDownloader:
             print(f"Reading {ANDHARAJOTHI} paper.")
             self.driver.get(current_url)
             hide_social_share_button(self.driver)
+            add_right_zero(self.driver)
             while page_no <= 7:
                 page_name = self.prepare_file_name(ANDHARAJOTHI, str(page_no))
                 self.get_pdf_from_html(page_name)
@@ -255,6 +298,7 @@ class NewspaperDownloader:
 
                 if page_no != 7:
                     navigate_to_next_page(self.driver, current_url)
+                    add_right_zero_to_elements(self.driver)
                     current_url = self.driver.current_url
 
                 page_no += 1
@@ -289,14 +333,17 @@ class NewspaperDownloader:
 
             print(f"Reading {SAKSHI} paper.")
             self.driver.get(current_url)
-            while page_no <= 6:
+            hide_social_share_button(self.driver)
+            add_right_zero(self.driver)
+            while page_no <= 8:
                 page_name = self.prepare_file_name(SAKSHI, str(page_no))
                 self.get_pdf_from_html(page_name)
                 # self.pdf_generator.get_pdf_from_html(current_url, page_name)
                 sakshi_files.append(page_name)
 
-                if page_no != 6:
+                if page_no != 8:
                     navigate_to_next_page(self.driver, current_url)
+                    add_right_zero_to_elements(self.driver)
                     current_url = self.driver.current_url
 
                 page_no += 1
@@ -325,12 +372,13 @@ class NewspaperDownloader:
 
             print(f"Reading {EENADU} paper.")
             self.driver.get(current_url)
-            while page_no <= 6:
+            no_of_pages = get_number_of_pages(self.driver)
+            while page_no <= no_of_pages:
                 page_name = self.prepare_file_name(EENADU, str(page_no))
                 self.get_pdf_from_html(page_name)
                 eenadu_files.append(page_name)
 
-                if page_no != 6:
+                if page_no != no_of_pages:
                     navigate_to_next_eenadu_page(self.driver)
                 page_no += 1
                 time.sleep(3)  # Adding a short delay to avoid overwhelming the page with rapid navigation
@@ -383,6 +431,7 @@ class NewspaperDownloader:
             current_url = self.driver.current_url
             accept_cookies("gdprContinue", self.driver)
             hide_social_share_button(self.driver)
+            add_right_zero(self.driver)
 
             page_no = 1
             visalandra_files = []
@@ -395,6 +444,7 @@ class NewspaperDownloader:
 
                 if page_no != 8:
                     navigate_to_next_page(self.driver, current_url)
+                    add_right_zero_to_elements(self.driver)
                     current_url = self.driver.current_url
 
                 page_no += 1
@@ -424,6 +474,8 @@ class NewspaperDownloader:
 
             print(f"Reading {ANDHRA_PRABHA} paper.")
             self.driver.get(current_url)
+            hide_social_share_button(self.driver)
+            add_right_zero(self.driver)
             while page_no <= 12:
                 page_name = self.prepare_file_name(ANDHRA_PRABHA, str(page_no))
                 self.get_pdf_from_html(page_name)
@@ -432,6 +484,7 @@ class NewspaperDownloader:
 
                 if page_no != 12:
                     navigate_to_next_page(self.driver, current_url)
+                    add_right_zero_to_elements(self.driver)
                     current_url = self.driver.current_url
 
                 page_no += 1
@@ -445,13 +498,13 @@ class NewspaperDownloader:
             print(f"Exception in {ANDHRA_PRABHA} paper: {err}")
 
     def execute_download(self):
-        # self.prajasakthi()
-        # self.andhra_prabha()
-        # self.surya()
-        # self.visalandra()
-        # self.vaartha()
-        # self.eenadu()
-        # self.sakshi()
+        self.prajasakthi()
+        self.andhra_prabha()
+        self.surya()
+        self.visalandra()
+        self.vaartha()
+        self.eenadu()
+        self.sakshi()
         self.andhra_jyothi()
         # time.sleep(600)
         remove_folder()
